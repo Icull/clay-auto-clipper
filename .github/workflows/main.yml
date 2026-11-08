@@ -27,11 +27,12 @@ jobs:
           pip install -r requirements.txt
           pip install --upgrade yt-dlp
 
-      - name: Run Clay Bot
+     - name: Run Clay Bot
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
           DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
         run: python main.py
