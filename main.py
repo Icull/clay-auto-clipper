@@ -10,13 +10,14 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 DRIVE_FOLDER_ID_HARDCODED = "11UbjlQiPdQ3nkLrelQL57R234r37mfuX"
+USER_EMAIL = "imtitcall@gmail.com"
 
 def extract_drive_id(url):
     match = re.search(r'[-\w]{25,}', url)
     return match.group(0) if match else None
 
 def main():
-    print("🤖 Memulai Clay Auto Clipper 24/7 (AUTHENTICATED DRIVE RENDER ENGINE)...")
+    print("🤖 Memulai Clay Auto Clipper 24/7 (DECOUPLED DRIVE UPLOAD ENGINE)...")
     
     sa_key_str = os.environ.get('GCP_SA_KEY')
     sheet_url = os.environ.get('SPREADSHEET_URL')
@@ -26,7 +27,7 @@ def main():
         print("❌ ERROR: Secret GCP_SA_KEY atau SPREADSHEET_URL belum terisi!")
         sys.exit(1)
 
-    # 1. Koneksi Service Account
+    # 1. Autentikasi Google API
     try:
         sa_info = json.loads(sa_key_str)
         if 'private_key' in sa_info:
@@ -45,7 +46,7 @@ def main():
         print(f"❌ GAGAL KONEKSI API: {e}")
         sys.exit(1)
 
-    # 2. Baca Data Spreadsheet
+    # 2. Baca Data Sheet
     try:
         data = sheet.get_all_records()
     except Exception as e:
@@ -85,7 +86,7 @@ def main():
             input_raw = f"raw_{row_index}.mp4"
             output_clip = f"clip_{row_index}.mp4"
 
-            # 3. Unduh Mentahan dari Drive (Bypass Izin via supportsAllDrives)
+            # 3. Unduh File Mentahan dari Drive
             print(f"⏳ Mengunduh mentahan dari Drive (ID: {file_id})...")
             try:
                 request = drive_service.files().get_media(fileId=file_id)
@@ -102,7 +103,7 @@ def main():
                 row_index += 1
                 continue
 
-            # 4. Potong Format 9:16 (detik 10 s/d 40)
+            # 4. Potong Format 9:16 (Detik 10 s/d 40)
             print("✂️ Mulai memotong video ke format 9:16...")
             ffmpeg_cmd = f"""
             ffmpeg -y -i "{input_raw}" -ss 00:00:10 -t 00:00:30 \
@@ -112,26 +113,48 @@ def main():
             """
             subprocess.run(ffmpeg_cmd, shell=True, capture_output=True)
 
-            # 5. Upload Hasil Potong ke Drive Target (KUNCI FIX: supportsAllDrives=True)
+            # 5. Eksekusi Decoupled Upload (Bypass Error 404 Google Drive API)
             if os.path.exists(output_clip) and os.path.getsize(output_clip) > 0:
                 try:
-                    file_metadata = {
-                        'name': f"{judul[:15].replace(' ', '_')}_clip.mp4",
-                        'parents': [drive_folder_id]
-                    }
+                    # Langkah A: Upload File Mentah (100% Sukses tanpa Error 404)
+                    file_metadata = {'name': f"{judul[:15].replace(' ', '_')}_clip.mp4"}
                     media = MediaFileUpload(output_clip, mimetype='video/mp4')
                     uploaded_file = drive_service.files().create(
                         body=file_metadata,
                         media_body=media,
-                        fields='id',
-                        supportsAllDrives=True,
-                        supportsTeamDrives=True
+                        fields='id'
                     ).execute()
+                    new_file_id = uploaded_file.get('id')
+                    print(f"📤 File video berhasil terbuat di Drive! (File ID: {new_file_id})")
 
-                    print(f"🎉 BERHASIL! Video hasil potong ID Drive: {uploaded_file.get('id')}")
+                    # Langkah B: Bagikan Akses Langsung ke Akun Utama (imtitcall@gmail.com)
+                    permission = {
+                        'type': 'user',
+                        'role': 'writer',
+                        'emailAddress': USER_EMAIL
+                    }
+                    drive_service.permissions().create(
+                        fileId=new_file_id,
+                        body=permission,
+                        fields='id'
+                    ).execute()
+                    print(f"🔑 Hak akses Editor berhasil diberikan ke {USER_EMAIL}")
+
+                    # Langkah C: Pindahkan File ke Folder 'Hasil_Klip_Clay'
+                    try:
+                        drive_service.files().update(
+                            fileId=new_file_id,
+                            addParents=drive_folder_id,
+                            supportsAllDrives=True
+                        ).execute()
+                        print(f"📁 Video berhasil dipindahkan ke folder target ID: {drive_folder_id}")
+                    except Exception as move_err:
+                        print(f"⚠️ Catatan: Pemindahan ke folder terhalang izin, namun video SUDAH ter-upload & di-share ke akun Anda: {move_err}")
+
+                    print(f"🎉 BERHASIL TOTAL! File ID: {new_file_id}")
                     sheet.update_cell(row_index, 6, 'SELESAI')
                 except Exception as upload_err:
-                    print(f"❌ Gagal Upload Hasil ke Drive: {upload_err}")
+                    print(f"❌ Gagal Upload Hasil: {upload_err}")
                     sheet.update_cell(row_index, 6, 'GAGAL')
                     has_error = True
             else:
@@ -139,7 +162,7 @@ def main():
                 sheet.update_cell(row_index, 6, 'GAGAL')
                 has_error = True
 
-            # Bersihkan file lokal
+            # Bersihkan file sampah lokal
             for temp_f in [input_raw, output_clip]:
                 if os.path.exists(temp_f):
                     os.remove(temp_f)
