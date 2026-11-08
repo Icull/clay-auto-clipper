@@ -50,19 +50,19 @@ with tab1:
                     url = "https://api.groq.com/openai/v1/chat/completions"
                     prompt_text = f"Berikan analisis mendalam untuk video podcast ini terkait potensi viralnya di TikTok, berikan Virality Score (0-100), alasan emosional, timestamp segmen terbaik, serta draft caption dan hashtags 3-tier: {video_url}"
                     
+                    # Menggunakan model llama-3.1-8b-instant yang dijamin aktif di semua akun Groq
                     payload = {
-                        "model": "llama-3.3-70b-versatile",
+                        "model": "llama-3.1-8b-instant",
                         "messages": [{"role": "user", "content": prompt_text}]
                     }
                     
-                    # Tambahan User-Agent agar lolos blokir Cloudflare (Error 1010)
                     req = urllib.request.Request(
                         url,
                         data=json.dumps(payload).encode('utf-8'),
                         headers={
                             'Content-Type': 'application/json',
                             'Authorization': f'Bearer {groq_key}',
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                         },
                         method='POST'
                     )
