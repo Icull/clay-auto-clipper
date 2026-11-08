@@ -1,7 +1,6 @@
 import streamlit as st
 import urllib.request
 import json
-import time
 
 st.set_page_config(page_title="Clay AI Clipper | CEO Dashboard", page_icon="✂️", layout="wide")
 
@@ -40,7 +39,8 @@ with tab1:
         if video_url:
             with st.spinner("AI sedang membedah transkrip..."):
                 try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+                    # Menggunakan endpoint universal v1
+                    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key={api_key}"
                     prompt_text = f"Berikan analisis mendalam untuk video podcast ini terkait potensi viralnya di TikTok, berikan Virality Score (0-100), alasan emosional, timestamp segmen terbaik, serta draft caption dan hashtags 3-tier: {video_url}"
                     
                     payload = {
@@ -60,7 +60,7 @@ with tab1:
                         st.session_state['last_analysis'] = ai_text
                         st.success("✅ Analisis Selesai! Cek tab Studio Analisis.")
                 except Exception as e:
-                    st.error(f"Gagal terhubung ke AI: {e}")
+                    st.error(f"Gagal terhubung ke AI (404/Error): Pastikan API Key aktif. Detail: {e}")
         else:
             st.warning("⚠️ Masukkan link terlebih dahulu.")
 
