@@ -1,5 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
+import urllib.request
+import json
 
 st.set_page_config(page_title="Clay AI Clipper | CEO Dashboard", page_icon="✂️", layout="wide")
 
@@ -23,12 +24,9 @@ def check_password():
 if not check_password():
     st.stop()
 
-# Konfigurasi Gemini standar
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    ai_model = genai.GenerativeModel('gemini-1.5-flash')
-else:
-    ai_model = None
+# Membersihkan format spasi/enter pada API Key Groq secara otomatis
+raw_key = st.secrets.get("GROQ_API_KEY", "")
+groq_key = "".join(raw_key.split())
 
 st.title("✂️ Clay Auto Clipper - Executive Dashboard")
 st.markdown("Selamat datang, CEO. Pantau radar viral dan setujui klip untuk diproduksi.")
@@ -41,17 +39,33 @@ with tab1:
     
     if st.button("🧠 Analisis Potensi Viral"):
         if video_url:
-            with st.spinner("AI sedang membedah transkrip..."):
-                if ai_model:
-                    try:
-                        prompt = f"Berikan analisis mendalam untuk video podcast ini terkait potensi viralnya di TikTok, berikan Virality Score (0-100), alasan emosional, timestamp segmen terbaik, serta draft caption dan hashtags 3-tier: {video_url}"
-                        response = ai_model.generate_content(prompt)
-                        st.session_state['last_analysis'] = response.text
+            with st.spinner("Groq AI sedang membedah video..."):
+                try:
+                    url = "https://api.groq.com/openai/v1/chat/completions"
+                    prompt_text = f"Berikan analisis mendalam untuk video podcast ini terkait potensi viralnya di TikTok, berikan Virality Score (0-100), alasan emosional, timestamp segmen terbaik, serta draft caption dan hashtags 3-tier: {video_url}"
+                    
+                    payload = {
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [{"role": "user", "content": prompt_text}]
+                    }
+                    
+                    req = urllib.request.Request(
+                        url,
+                        data=json.dumps(payload).encode('utf-8'),
+                        headers={
+                            'Content-Type': 'application/json',
+                            'Authorization': f'Bearer {groq_key}'
+                        },
+                        method='POST'
+                    )
+                    
+                    with urllib.request.urlopen(req) as response:
+                        res_data = json.loads(response.read().decode('utf-8'))
+                        ai_text = res_data['choices'][0]['message']['content']
+                        st.session_state['last_analysis'] = ai_text
                         st.success("✅ Analisis Selesai! Cek tab Studio Analisis.")
-                    except Exception as e:
-                        st.error(f"Gagal memproses AI: {e}")
-                else:
-                    st.error("API Key Gemini belum terbaca di Secrets.")
+                except Exception as e:
+                    st.error(f"Gagal terhubung ke Groq: {e}")
         else:
             st.warning("⚠️ Masukkan link terlebih dahulu.")
 
