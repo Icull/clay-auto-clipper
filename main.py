@@ -9,7 +9,6 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
-# HARDCODE ID FOLDER DRIVE TARGET (Hasil_Klip_Clay)
 DRIVE_FOLDER_ID_HARDCODED = "11UbjlQiPdQ3nkLrelQL57R234r37mfuX"
 
 def extract_drive_id(url):
@@ -17,7 +16,7 @@ def extract_drive_id(url):
     return match.group(0) if match else None
 
 def main():
-    print("🤖 Memulai Clay Auto Clipper 24/7 (DRIVE RENDER ENGINE)...")
+    print("🤖 Memulai Clay Auto Clipper 24/7 (AUTHENTICATED DRIVE RENDER ENGINE)...")
     
     sa_key_str = os.environ.get('GCP_SA_KEY')
     sheet_url = os.environ.get('SPREADSHEET_URL')
@@ -27,6 +26,7 @@ def main():
         print("❌ ERROR: Secret GCP_SA_KEY atau SPREADSHEET_URL belum terisi!")
         sys.exit(1)
 
+    # 1. Koneksi Service Account
     try:
         sa_info = json.loads(sa_key_str)
         if 'private_key' in sa_info:
@@ -45,6 +45,7 @@ def main():
         print(f"❌ GAGAL KONEKSI API: {e}")
         sys.exit(1)
 
+    # 2. Baca Data Spreadsheet
     try:
         data = sheet.get_all_records()
     except Exception as e:
@@ -84,6 +85,7 @@ def main():
             input_raw = f"raw_{row_index}.mp4"
             output_clip = f"clip_{row_index}.mp4"
 
+            # 3. Unduh Mentahan dari Drive (Bypass Izin via supportsAllDrives)
             print(f"⏳ Mengunduh mentahan dari Drive (ID: {file_id})...")
             try:
                 request = drive_service.files().get_media(fileId=file_id)
@@ -100,6 +102,7 @@ def main():
                 row_index += 1
                 continue
 
+            # 4. Potong Format 9:16 (detik 10 s/d 40)
             print("✂️ Mulai memotong video ke format 9:16...")
             ffmpeg_cmd = f"""
             ffmpeg -y -i "{input_raw}" -ss 00:00:10 -t 00:00:30 \
@@ -109,6 +112,7 @@ def main():
             """
             subprocess.run(ffmpeg_cmd, shell=True, capture_output=True)
 
+            # 5. Upload Hasil Potong ke Drive Target (KUNCI FIX: supportsAllDrives=True)
             if os.path.exists(output_clip) and os.path.getsize(output_clip) > 0:
                 try:
                     file_metadata = {
@@ -117,7 +121,11 @@ def main():
                     }
                     media = MediaFileUpload(output_clip, mimetype='video/mp4')
                     uploaded_file = drive_service.files().create(
-                        body=file_metadata, media_body=media, fields='id'
+                        body=file_metadata,
+                        media_body=media,
+                        fields='id',
+                        supportsAllDrives=True,
+                        supportsTeamDrives=True
                     ).execute()
 
                     print(f"🎉 BERHASIL! Video hasil potong ID Drive: {uploaded_file.get('id')}")
@@ -131,6 +139,7 @@ def main():
                 sheet.update_cell(row_index, 6, 'GAGAL')
                 has_error = True
 
+            # Bersihkan file lokal
             for temp_f in [input_raw, output_clip]:
                 if os.path.exists(temp_f):
                     os.remove(temp_f)
