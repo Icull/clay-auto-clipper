@@ -1,58 +1,25 @@
 import os
+import io
 import json
 import sys
+import re
 import subprocess
-import requests
 import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from pytubefix import YouTube
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
-def download_video_robust(link_video, output_path):
-    print("⏳ [Engine 1] PyTubeFix (Bypass PO Token)...")
-    try:
-        # use_po_token=True adalah kunci menembus blokir YouTube di GitHub Actions
-        yt = YouTube(link_video, use_po_token=True)
-        ys = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
-        if not ys:
-            ys = yt.streams.get_highest_resolution()
-        
-        ys.download(filename=output_path)
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            print("✅ Engine 1 (PyTubeFix) Sukses!")
-            return True
-    except Exception as e:
-        print(f"⚠️ Engine 1 Error: {e}")
-
-    print("⏳ [Engine 2] Cobalt API v7 (Serverless)...")
-    try:
-        # Endpoint API Cobalt yang benar (bukan /api/json lagi)
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        res = requests.post("https://api.cobalt.tools/", json={"url": link_video}, headers=headers, timeout=30)
-        
-        if res.status_code == 200 and "url" in res.json():
-            with requests.get(res.json()["url"], stream=True, timeout=120) as r:
-                r.raise_for_status()
-                with open(output_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                print("✅ Engine 2 (Cobalt) Sukses!")
-                return True
-        else:
-            print(f"⚠️ Penolakan Engine 2: {res.text}")
-    except Exception as e:
-        print(f"⚠️ Engine 2 Error: {e}")
-
-    return False
+def extract_drive_id(url):
+    # Melacak ID unik dari link Google Drive secara otomatis
+    match = re.search(r'[-\w]{25,}', url)
+    return match.group(0) if match else None
 
 def main():
-    print("🤖 Memulai Clay Auto Clipper 24/7 (PO Token Mode)...")
+    print("🤖 Memulai Clay Auto Clipper 24/7 (DRIVE RENDER ENGINE)...")
     
     sa_key_str = os.environ.get('GCP_SA_KEY')
     sheet_url = os.environ.get('SPREADSHEET_URL')
-    drive_folder_id = os.environ.get('DRIVE_FOLDER_ID')
+    drive_folder_id = os.environ.get('DRIVE_FOLDER_ID') # Folder Hasil Klip
 
     if not sa_key_str or not sheet_url or not drive_folder_id:
         print("❌ ERROR: Secret GCP_SA_KEY, SPREADSHEET_URL, atau DRIVE_FOLDER_ID belum terisi!")
@@ -70,9 +37,10 @@ def main():
         creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
         gc = gspread.authorize(creds)
         sheet = gc.open_by_url(sheet_url).sheet1
-        print("✅ Terhubung ke Google Sheet!")
+        drive_service = build('drive', 'v3', credentials=creds)
+        print("✅ Terhubung ke Google Sheet & Drive API!")
     except Exception as e:
-        print(f"❌ GAGAL KONEKSI SPREADSHEET: {e}")
+        print(f"❌ GAGAL KONEKSI API: {e}")
         sys.exit(1)
 
     try:
@@ -103,19 +71,37 @@ def main():
             print(f"\n🎬 Memproses Baris {row_index}: {judul}")
             sheet.update_cell(row_index, 6, 'PROSES...')
 
-            input_raw = f"raw_{row_index}.mp4"
-            output_clip = f"clip_{row_index}.mp4"
-
-            # Proses Download Anti-Bot
-            if not download_video_robust(link_video, input_raw):
-                print("❌ Gagal Download Video dari seluruh Engine!")
+            # 1. Verifikasi Link Google Drive Mentahan
+            file_id = extract_drive_id(link_video)
+            if not file_id:
+                print("❌ Kolom Link Video BUKAN Link Google Drive!")
                 sheet.update_cell(row_index, 6, 'GAGAL')
                 has_error = True
                 row_index += 1
                 continue
 
-            # Proses Potong 9:16
-            print("✂️ Motong video ke format 9:16...")
+            input_raw = f"raw_{row_index}.mp4"
+            output_clip = f"clip_{row_index}.mp4"
+
+            # 2. Download File Mentahan dari Google Drive (Kecepatan Tinggi)
+            print(f"⏳ Mengunduh mentahan dari Drive (ID: {file_id})...")
+            try:
+                request = drive_service.files().get_media(fileId=file_id)
+                fh = io.FileIO(input_raw, 'wb')
+                downloader = MediaIoBaseDownload(fh, request)
+                done = False
+                while done is False:
+                    status_dl, done = downloader.next_chunk()
+                    print(f"   Download progress: {int(status_dl.progress() * 100)}%.")
+            except Exception as e:
+                print(f"❌ Gagal unduh mentahan (Pastikan folder mentahan di-Share ke bot!): {e}")
+                sheet.update_cell(row_index, 6, 'GAGAL')
+                has_error = True
+                row_index += 1
+                continue
+
+            # 3. Proses Rendering FFmpeg (Potong 9:16)
+            print("✂️ Mulai memotong video ke format 9:16...")
             ffmpeg_cmd = f"""
             ffmpeg -y -i "{input_raw}" -ss 00:00:10 -t 00:00:30 \
             -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:10[bg]; \
@@ -124,10 +110,9 @@ def main():
             """
             subprocess.run(ffmpeg_cmd, shell=True, capture_output=True)
 
-            # Upload ke Drive
+            # 4. Upload Hasil Potongan ke Folder Drive Tujuan
             if os.path.exists(output_clip) and os.path.getsize(output_clip) > 0:
                 try:
-                    drive_service = build('drive', 'v3', credentials=creds)
                     file_metadata = {
                         'name': f"{judul[:15].replace(' ', '_')}_clip.mp4",
                         'parents': [drive_folder_id]
@@ -137,18 +122,18 @@ def main():
                         body=file_metadata, media_body=media, fields='id'
                     ).execute()
 
-                    print(f"🎉 BERHASIL! Video ID Drive: {uploaded_file.get('id')}")
+                    print(f"🎉 BERHASIL! Video hasil potong ID Drive: {uploaded_file.get('id')}")
                     sheet.update_cell(row_index, 6, 'SELESAI')
                 except Exception as upload_err:
-                    print(f"❌ Gagal Upload Drive: {upload_err}")
+                    print(f"❌ Gagal Upload Hasil ke Drive: {upload_err}")
                     sheet.update_cell(row_index, 6, 'GAGAL')
                     has_error = True
             else:
-                print(f"❌ Gagal Render Video!")
+                print(f"❌ Gagal Render FFmpeg!")
                 sheet.update_cell(row_index, 6, 'GAGAL')
                 has_error = True
 
-            # Bersihkan file
+            # Bersihkan mesin virtual GitHub
             for temp_f in [input_raw, output_clip]:
                 if os.path.exists(temp_f):
                     os.remove(temp_f)
