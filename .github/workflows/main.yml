@@ -2,9 +2,8 @@ name: Clay Auto Clipper 24/7
 
 on:
   schedule:
-    # Jalan otomatis setiap 15 menit 24 jam nonstop
-  - cron: '*/15 * * * *'
-  workflow_dispatch: # Bisa di-trigger manual kapan aja dari HP/Browser
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
 
 jobs:
   run-clipper:
