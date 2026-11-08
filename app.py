@@ -1,5 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
+import urllib.request
+import json
 import time
 
 st.set_page_config(page_title="Clay AI Clipper | CEO Dashboard", page_icon="✂️", layout="wide")
@@ -24,11 +25,7 @@ def check_password():
 if not check_password():
     st.stop()
 
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    ai_model = genai.GenerativeModel('gemini-1.5-flash')
-else:
-    ai_model = None
+api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 st.title("✂️ Clay Auto Clipper - Executive Dashboard")
 st.markdown("Selamat datang, CEO. Pantau radar viral dan setujui klip untuk diproduksi.")
@@ -42,13 +39,28 @@ with tab1:
     if st.button("🧠 Analisis Potensi Viral"):
         if video_url:
             with st.spinner("AI sedang membedah transkrip..."):
-                if ai_model:
-                    prompt = f"Berikan analisis mendalam untuk video podcast ini terkait potensi viralnya di TikTok, berikan Virality Score (0-100), alasan emosional, timestamp segmen terbaik, serta draft caption dan hashtags 3-tier: {video_url}"
-                    response = ai_model.generate_content(prompt)
-                    st.session_state['last_analysis'] = response.text
-                else:
-                    st.session_state['last_analysis'] = "Simulasi AI berhasil."
-                st.success("✅ Analisis Selesai! Cek tab Studio Analisis.")
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+                    prompt_text = f"Berikan analisis mendalam untuk video podcast ini terkait potensi viralnya di TikTok, berikan Virality Score (0-100), alasan emosional, timestamp segmen terbaik, serta draft caption dan hashtags 3-tier: {video_url}"
+                    
+                    payload = {
+                        "contents": [{"parts": [{"text": prompt_text}]}]
+                    }
+                    
+                    req = urllib.request.Request(
+                        url,
+                        data=json.dumps(payload).encode('utf-8'),
+                        headers={'Content-Type': 'application/json'},
+                        method='POST'
+                    )
+                    
+                    with urllib.request.urlopen(req) as response:
+                        res_data = json.loads(response.read().decode('utf-8'))
+                        ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
+                        st.session_state['last_analysis'] = ai_text
+                        st.success("✅ Analisis Selesai! Cek tab Studio Analisis.")
+                except Exception as e:
+                    st.error(f"Gagal terhubung ke AI: {e}")
         else:
             st.warning("⚠️ Masukkan link terlebih dahulu.")
 
