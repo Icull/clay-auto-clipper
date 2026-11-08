@@ -24,12 +24,18 @@ def check_password():
 if not check_password():
     st.stop()
 
-# Membersihkan format spasi/enter pada API Key Groq secara otomatis
+# Ambil dan bersihkan key dari secrets
 raw_key = st.secrets.get("GROQ_API_KEY", "")
 groq_key = "".join(raw_key.split())
 
 st.title("✂️ Clay Auto Clipper - Executive Dashboard")
 st.markdown("Selamat datang, CEO. Pantau radar viral dan setujui klip untuk diproduksi.")
+
+# DEBUG STATUS KEY (Supaya kita tahu kuncinya terbaca atau tidak)
+if not groq_key:
+    st.error("🚨 CRITICAL: `GROQ_API_KEY` tidak terbaca di Streamlit Secrets! Cek menu Settings -> Secrets.")
+else:
+    st.sidebar.success(f"✅ Groq Key Terbaca: {groq_key[:8]}... (Aman)")
 
 tab1, tab2, tab3 = st.tabs(["📡 Radar & Scanner", "✂️ Studio Analisis", "📂 Content Vault"])
 
@@ -38,7 +44,9 @@ with tab1:
     video_url = st.text_input("🔗 Link Video YouTube:")
     
     if st.button("🧠 Analisis Potensi Viral"):
-        if video_url:
+        if not groq_key:
+            st.error("⚠️ Tidak bisa menganalisis karena API Key Groq kosong di Secrets.")
+        elif video_url:
             with st.spinner("Groq AI sedang membedah video..."):
                 try:
                     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -64,6 +72,9 @@ with tab1:
                         ai_text = res_data['choices'][0]['message']['content']
                         st.session_state['last_analysis'] = ai_text
                         st.success("✅ Analisis Selesai! Cek tab Studio Analisis.")
+                except urllib.error.HTTPError as e:
+                    error_msg = e.read().decode('utf-8')
+                    st.error(f"HTTP Error {e.code}: {error_msg}")
                 except Exception as e:
                     st.error(f"Gagal terhubung ke Groq: {e}")
         else:
