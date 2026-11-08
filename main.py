@@ -15,15 +15,18 @@ def main():
     drive_folder_id = os.environ.get('DRIVE_FOLDER_ID')
 
     if not sa_key_str or not sheet_url or not drive_folder_id:
-        print("❌ ERROR: Secret GCP_SA_KEY, SPREADSHEET_URL, atau DRIVE_FOLDER_ID belum terisi di GitHub Secrets!")
-        sys.exit(1)
-
-    # 1. Autentikasi Google Sheet
-    try:
-        sa_info = json.loads(sa_key_str)
+  # Memastikan format Private Key aman
+        if 'private_key' in sa_info:
+            sa_info['private_key'] = sa_info['private_key'].replace('\\n', '\n')
+            
         scopes = [
             'https://www.googleapis.com/auth/spreadsheets',
             'https://www.googleapis.com/auth/drive'
+        ]
+        creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
+        gc = gspread.authorize(creds)
+        sheet = gc.open_by_url(sheet_url).sheet1
+        print("✅ Terhubung ke Google Sheet!")
         ]
         creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
         gc = gspread.authorize(creds)
