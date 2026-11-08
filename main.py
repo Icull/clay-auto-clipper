@@ -15,7 +15,7 @@ def main():
     drive_folder_id = os.environ.get('DRIVE_FOLDER_ID')
 
     if not sa_key_str or not sheet_url or not drive_folder_id:
-        print("❌ ERROR: Secret GCP_SA_KEY, SPREADSHEET_URL, atau DRIVE_FOLDER_ID belum terisi di GitHub Secrets!")
+        print("❌ ERROR: Secret GCP_SA_KEY, SPREADSHEET_URL, atau DRIVE_FOLDER_ID belum terisi!")
         sys.exit(1)
 
     # 1. Autentikasi Google Sheet & Drive
@@ -34,7 +34,6 @@ def main():
         print("✅ Terhubung ke Google Sheet!")
     except Exception as e:
         print(f"❌ GAGAL KONEKSI SPREADSHEET: {e}")
-        print("👉 Pastikan email service account (clay-bot@...) sudah di-add sebagai EDITOR dan API Sheets/Drive sudah di-ENABLE!")
         sys.exit(1)
 
     # 2. Baca Data Sheet
@@ -49,7 +48,6 @@ def main():
     found = False
 
     for row in data:
-        # Otomatis deteksi kolom centang Approve (tanpa pusing nama header)
         approve_val = None
         for key in row.keys():
             if 'approve' in str(key).lower():
@@ -71,9 +69,9 @@ def main():
             input_raw = f"raw_{row_index}.mp4"
             output_clip = f"clip_{row_index}.mp4"
 
-            # Step A: Download Video Asli via yt-dlp
-            print("⏳ Downloading video dari YouTube...")
-            dl_cmd = f'yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --no-playlist -o "{input_raw}" "{link_video}"'
+            # Step A: Download Video via Client Android Bypass
+            print("⏳ Downloading video dari YouTube (Android Bypass)...")
+            dl_cmd = f'yt-dlp --extractor-args "youtube:player_client=android,web" -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --no-playlist -o "{input_raw}" "{link_video}"'
             dl_res = subprocess.run(dl_cmd, shell=True, capture_output=True, text=True)
 
             if not os.path.exists(input_raw) or os.path.getsize(input_raw) == 0:
