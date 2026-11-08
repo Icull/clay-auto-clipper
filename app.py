@@ -50,9 +50,9 @@ with tab1:
                     url = "https://api.groq.com/openai/v1/chat/completions"
                     prompt_text = f"Berikan analisis mendalam untuk video podcast ini terkait potensi viralnya di TikTok, berikan Virality Score (0-100), alasan emosional, timestamp segmen terbaik, serta draft caption dan hashtags 3-tier: {video_url}"
                     
-                    # Mencoba model llama-3.1-70b-versatile yang kompatibel luas
+                    # Menggunakan model Llama 3.3 SpecDec aktif resmi Groq
                     payload = {
-                        "model": "llama-3.1-70b-versatile",
+                        "model": "llama-3.3-70b-specdec",
                         "messages": [{"role": "user", "content": prompt_text}]
                     }
                     
