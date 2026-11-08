@@ -24,7 +24,7 @@ def check_password():
 if not check_password():
     st.stop()
 
-api_key = st.secrets.get("GEMINI_API_KEY", "")
+groq_key = st.secrets.get("GROQ_API_KEY", "")
 
 st.title("✂️ Clay Auto Clipper - Executive Dashboard")
 st.markdown("Selamat datang, CEO. Pantau radar viral dan setujui klip untuk diproduksi.")
@@ -37,30 +37,33 @@ with tab1:
     
     if st.button("🧠 Analisis Potensi Viral"):
         if video_url:
-            with st.spinner("AI sedang membedah transkrip..."):
+            with st.spinner("Groq AI sedang membedah video..."):
                 try:
-                    # Menggunakan endpoint universal v1
-                    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key={api_key}"
+                    url = "https://api.groq.com/openai/v1/chat/completions"
                     prompt_text = f"Berikan analisis mendalam untuk video podcast ini terkait potensi viralnya di TikTok, berikan Virality Score (0-100), alasan emosional, timestamp segmen terbaik, serta draft caption dan hashtags 3-tier: {video_url}"
                     
                     payload = {
-                        "contents": [{"parts": [{"text": prompt_text}]}]
+                        "model": "llama-3.3-70b-versatile",
+                        "messages": [{"role": "user", "content": prompt_text}]
                     }
                     
                     req = urllib.request.Request(
                         url,
                         data=json.dumps(payload).encode('utf-8'),
-                        headers={'Content-Type': 'application/json'},
+                        headers={
+                            'Content-Type': 'application/json',
+                            'Authorization': f'Bearer {groq_key}'
+                        },
                         method='POST'
                     )
                     
                     with urllib.request.urlopen(req) as response:
                         res_data = json.loads(response.read().decode('utf-8'))
-                        ai_text = res_data['candidates'][0]['content']['parts'][0]['text']
+                        ai_text = res_data['choices'][0]['message']['content']
                         st.session_state['last_analysis'] = ai_text
                         st.success("✅ Analisis Selesai! Cek tab Studio Analisis.")
                 except Exception as e:
-                    st.error(f"Gagal terhubung ke AI (404/Error): Pastikan API Key aktif. Detail: {e}")
+                    st.error(f"Gagal terhubung ke Groq: {e}")
         else:
             st.warning("⚠️ Masukkan link terlebih dahulu.")
 
