@@ -2,10 +2,46 @@ import os
 import json
 import sys
 import subprocess
+import requests
 import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+
+def download_video_bypass(link_video, output_path):
+    # Engine 1: yt-dlp via Smart TV & Android VR Client (Bypass Bot Check)
+    print("⏳ Downloading video via Client Smart TV / Android VR...")
+    dl_cmd = f'yt-dlp --extractor-args "youtube:player_client=tv,android_vr" -f "b/bestpass/best[ext=mp4]/best" --no-playlist -o "{output_path}" "{link_video}"'
+    subprocess.run(dl_cmd, shell=True, capture_output=True, text=True)
+
+    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+        return True
+
+    # Engine 2: Fallback ke Cobalt Public API
+    print("🔄 Jalur TV terdeteksi ketat. Mengalihkan ke Engine Cobalt Bypass...")
+    try:
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        }
+        payload = {"url": link_video, "videoQuality": "720"}
+        res = requests.post("https://api.cobalt.tools/api/json", json=payload, headers=headers, timeout=25)
+        res_data = res.json()
+        
+        stream_url = res_data.get("url")
+        if stream_url:
+            print("🔗 Link stream bersih didapatkan. Mengunduh file video...")
+            with requests.get(stream_url, stream=True, timeout=90) as r:
+                r.raise_for_status()
+                with open(output_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                return True
+    except Exception as e:
+        print(f"⚠️ Engine Cobalt error: {e}")
+
+    return False
 
 def main():
     print("🤖 Memulai Clay Auto Clipper 24/7...")
@@ -18,7 +54,7 @@ def main():
         print("❌ ERROR: Secret GCP_SA_KEY, SPREADSHEET_URL, atau DRIVE_FOLDER_ID belum terisi!")
         sys.exit(1)
 
-    # 1. Autentikasi Google Sheet & Drive
+    # Autentikasi Google Sheet & Drive
     try:
         sa_info = json.loads(sa_key_str)
         if 'private_key' in sa_info:
@@ -36,7 +72,6 @@ def main():
         print(f"❌ GAGAL KONEKSI SPREADSHEET: {e}")
         sys.exit(1)
 
-    # 2. Baca Data Sheet
     try:
         data = sheet.get_all_records()
         print(f"📊 Berhasil membaca {len(data)} baris data dari Google Sheet.")
@@ -70,19 +105,17 @@ def main():
             input_raw = f"raw_{row_index}.mp4"
             output_clip = f"clip_{row_index}.mp4"
 
-            # Step A: Download Video via Multi-Client Bypass (iOS, Android, Web)
-            print("⏳ Downloading video dari YouTube (Multi-Client Bypass)...")
-            dl_cmd = f'yt-dlp --extractor-args "youtube:player_client=ios,android,mweb,web" -f "b/bestpass/best" --no-playlist -o "{input_raw}" "{link_video}"'
-            dl_res = subprocess.run(dl_cmd, shell=True, capture_output=True, text=True)
+            # Eksekusi Unduh Dual-Engine
+            download_success = download_video_bypass(link_video, input_raw)
 
-            if not os.path.exists(input_raw) or os.path.getsize(input_raw) == 0:
-                print(f"❌ Gagal Download Video! Detail:\n{dl_res.stderr[-400:]}")
+            if not download_success:
+                print("❌ Gagal Download Video dari seluruh Engine Bypass!")
                 sheet.update_cell(row_index, 6, 'GAGAL')
                 has_error = True
                 row_index += 1
                 continue
 
-            # Step B: Potong 9:16 (Detik 10 s/d 40) via FFmpeg
+            # Crop Format 9:16 (Detik 10 s/d 40)
             print("✂️ Motong video ke format 9:16...")
             ffmpeg_cmd = f"""
             ffmpeg -y -i "{input_raw}" -ss 00:00:10 -t 00:00:30 \
@@ -92,7 +125,7 @@ def main():
             """
             ff_res = subprocess.run(ffmpeg_cmd, shell=True, capture_output=True, text=True)
 
-            # Step C: Upload ke Google Drive
+            # Upload ke Google Drive
             if os.path.exists(output_clip) and os.path.getsize(output_clip) > 0:
                 try:
                     drive_service = build('drive', 'v3', credentials=creds)
@@ -112,11 +145,11 @@ def main():
                     sheet.update_cell(row_index, 6, 'GAGAL')
                     has_error = True
             else:
-                print(f"❌ Gagal Render Video! Detail:\n{ff_res.stderr[-400:]}")
+                print(f"❌ Gagal Render Video! Detail:\n{ff_res.stderr[-300:]}")
                 sheet.update_cell(row_index, 6, 'GAGAL')
                 has_error = True
 
-            # Bersihkan file sampah
+            # Clean temporary files
             for temp_f in [input_raw, output_clip]:
                 if os.path.exists(temp_f):
                     os.remove(temp_f)
