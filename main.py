@@ -46,6 +46,7 @@ def main():
 
     row_index = 2
     found = False
+    has_error = False
 
     for row in data:
         approve_val = None
@@ -59,8 +60,8 @@ def main():
 
         if is_approved and status not in ['SELESAI', 'GAGAL', 'PROSES...']:
             found = True
-            link_video = row.get('Link Video', '')
-            judul = row.get('Judul', f'Video_{row_index}')
+            link_video = str(row.get('Link Video', '')).strip()
+            judul = str(row.get('Judul', f'Video_{row_index}')).strip()
 
             print(f"\n🎬 Memproses Baris {row_index}: {judul}")
             print(f"🔗 Link: {link_video}")
@@ -69,15 +70,17 @@ def main():
             input_raw = f"raw_{row_index}.mp4"
             output_clip = f"clip_{row_index}.mp4"
 
-            # Step A: Download Video via Client Android Bypass
-            print("⏳ Downloading video dari YouTube (Android Bypass)...")
-            dl_cmd = f'yt-dlp --extractor-args "youtube:player_client=android,web" -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --no-playlist -o "{input_raw}" "{link_video}"'
+            # Step A: Download Video via Multi-Client Bypass (iOS, Android, Web)
+            print("⏳ Downloading video dari YouTube (Multi-Client Bypass)...")
+            dl_cmd = f'yt-dlp --extractor-args "youtube:player_client=ios,android,mweb,web" -f "b/bestpass/best" --no-playlist -o "{input_raw}" "{link_video}"'
             dl_res = subprocess.run(dl_cmd, shell=True, capture_output=True, text=True)
 
             if not os.path.exists(input_raw) or os.path.getsize(input_raw) == 0:
-                print(f"❌ Gagal Download Video! Detail:\n{dl_res.stderr[-300:]}")
+                print(f"❌ Gagal Download Video! Detail:\n{dl_res.stderr[-400:]}")
                 sheet.update_cell(row_index, 6, 'GAGAL')
-                sys.exit(1)
+                has_error = True
+                row_index += 1
+                continue
 
             # Step B: Potong 9:16 (Detik 10 s/d 40) via FFmpeg
             print("✂️ Motong video ke format 9:16...")
@@ -107,11 +110,11 @@ def main():
                 except Exception as upload_err:
                     print(f"❌ Gagal Upload Drive: {upload_err}")
                     sheet.update_cell(row_index, 6, 'GAGAL')
-                    sys.exit(1)
+                    has_error = True
             else:
-                print(f"❌ Gagal Render Video! Detail:\n{ff_res.stderr[-300:]}")
+                print(f"❌ Gagal Render Video! Detail:\n{ff_res.stderr[-400:]}")
                 sheet.update_cell(row_index, 6, 'GAGAL')
-                sys.exit(1)
+                has_error = True
 
             # Bersihkan file sampah
             for temp_f in [input_raw, output_clip]:
@@ -122,6 +125,9 @@ def main():
 
     if not found:
         print("ℹ️ Tidak ada antrean video ter-centang/approve di Sheet.")
+
+    if has_error:
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
