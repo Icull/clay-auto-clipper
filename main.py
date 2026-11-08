@@ -7,47 +7,48 @@ import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from pytubefix import YouTube
 
 def download_video_robust(link_video, output_path):
-    print("⏳ [Engine 1] Mencoba download via API Eksternal (Anti-Bot Bypass)...")
+    print("⏳ [Engine 1] PyTubeFix (Bypass PO Token)...")
     try:
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
-        payload = {"url": link_video, "videoQuality": "1080"}
-        res = requests.post("https://api.cobalt.tools/api/json", json=payload, headers=headers, timeout=30)
+        # use_po_token=True adalah kunci menembus blokir YouTube di GitHub Actions
+        yt = YouTube(link_video, use_po_token=True)
+        ys = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+        if not ys:
+            ys = yt.streams.get_highest_resolution()
         
-        if res.status_code == 200:
-            stream_url = res.json().get("url")
-            if stream_url:
-                print("✅ Link stream berhasil didapat! Mengunduh file...")
-                with requests.get(stream_url, stream=True, timeout=120) as r:
-                    r.raise_for_status()
-                    with open(output_path, 'wb') as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                    return True
-        else:
-            print(f"⚠️ Engine 1 menolak request: {res.text}")
+        ys.download(filename=output_path)
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            print("✅ Engine 1 (PyTubeFix) Sukses!")
+            return True
     except Exception as e:
         print(f"⚠️ Engine 1 Error: {e}")
 
-    print("⏳ [Engine 2] Fallback ke yt-dlp mode Stealth iOS (Tanpa Cookies)...")
+    print("⏳ [Engine 2] Cobalt API v7 (Serverless)...")
     try:
-        dl_cmd = f'yt-dlp --extractor-args "youtube:player_client=ios" -f "b/bestpass/best" --no-playlist -o "{output_path}" "{link_video}"'
-        subprocess.run(dl_cmd, shell=True, capture_output=True, text=True)
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            return True
+        # Endpoint API Cobalt yang benar (bukan /api/json lagi)
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        res = requests.post("https://api.cobalt.tools/", json={"url": link_video}, headers=headers, timeout=30)
+        
+        if res.status_code == 200 and "url" in res.json():
+            with requests.get(res.json()["url"], stream=True, timeout=120) as r:
+                r.raise_for_status()
+                with open(output_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                print("✅ Engine 2 (Cobalt) Sukses!")
+                return True
+        else:
+            print(f"⚠️ Penolakan Engine 2: {res.text}")
     except Exception as e:
-        print(f"⚠️ yt-dlp Error: {e}")
+        print(f"⚠️ Engine 2 Error: {e}")
 
     return False
 
 def main():
-    print("🤖 Memulai Clay Auto Clipper 24/7 (Serverless API Mode)...")
+    print("🤖 Memulai Clay Auto Clipper 24/7 (PO Token Mode)...")
     
     sa_key_str = os.environ.get('GCP_SA_KEY')
     sheet_url = os.environ.get('SPREADSHEET_URL')
@@ -76,7 +77,6 @@ def main():
 
     try:
         data = sheet.get_all_records()
-        print(f"📊 Berhasil membaca {len(data)} baris data dari Google Sheet.")
     except Exception as e:
         print(f"❌ GAGAL MEMBACA DATA SHEET: {e}")
         sys.exit(1)
@@ -101,21 +101,20 @@ def main():
             judul = str(row.get('Judul', f'Video_{row_index}')).strip()
 
             print(f"\n🎬 Memproses Baris {row_index}: {judul}")
-            print(f"🔗 Link: {link_video}")
             sheet.update_cell(row_index, 6, 'PROSES...')
 
             input_raw = f"raw_{row_index}.mp4"
             output_clip = f"clip_{row_index}.mp4"
 
-            download_success = download_video_robust(link_video, input_raw)
-
-            if not download_success:
+            # Proses Download Anti-Bot
+            if not download_video_robust(link_video, input_raw):
                 print("❌ Gagal Download Video dari seluruh Engine!")
                 sheet.update_cell(row_index, 6, 'GAGAL')
                 has_error = True
                 row_index += 1
                 continue
 
+            # Proses Potong 9:16
             print("✂️ Motong video ke format 9:16...")
             ffmpeg_cmd = f"""
             ffmpeg -y -i "{input_raw}" -ss 00:00:10 -t 00:00:30 \
@@ -125,6 +124,7 @@ def main():
             """
             subprocess.run(ffmpeg_cmd, shell=True, capture_output=True)
 
+            # Upload ke Drive
             if os.path.exists(output_clip) and os.path.getsize(output_clip) > 0:
                 try:
                     drive_service = build('drive', 'v3', credentials=creds)
@@ -148,6 +148,7 @@ def main():
                 sheet.update_cell(row_index, 6, 'GAGAL')
                 has_error = True
 
+            # Bersihkan file
             for temp_f in [input_raw, output_clip]:
                 if os.path.exists(temp_f):
                     os.remove(temp_f)
