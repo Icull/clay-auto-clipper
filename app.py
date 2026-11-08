@@ -50,9 +50,9 @@ with tab1:
                     url = "https://api.groq.com/openai/v1/chat/completions"
                     prompt_text = f"Berikan analisis mendalam untuk video podcast ini terkait potensi viralnya di TikTok, berikan Virality Score (0-100), alasan emosional, timestamp segmen terbaik, serta draft caption dan hashtags 3-tier: {video_url}"
                     
-                    # Menggunakan model Llama 3.3 70B Versatile terbaru yang aktif
+                    # Mencoba model llama-3.1-70b-versatile yang kompatibel luas
                     payload = {
-                        "model": "llama-3.3-70b-versatile",
+                        "model": "llama-3.1-70b-versatile",
                         "messages": [{"role": "user", "content": prompt_text}]
                     }
                     
@@ -73,8 +73,8 @@ with tab1:
                         st.session_state['last_analysis'] = ai_text
                         st.success("✅ Analisis Selesai! Cek tab Studio Analisis.")
                 except urllib.error.HTTPError as e:
-                    error_msg = e.read().decode('utf-8')
-                    st.error(f"HTTP Error {e.code}: {error_msg}")
+                    error_body = e.read().decode('utf-8')
+                    st.error(f"HTTP Error {e.code}: {error_body}")
                 except Exception as e:
                     st.error(f"Gagal terhubung ke Groq: {e}")
         else:
