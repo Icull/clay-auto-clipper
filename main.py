@@ -15,10 +15,15 @@ def main():
     drive_folder_id = os.environ.get('DRIVE_FOLDER_ID')
 
     if not sa_key_str or not sheet_url or not drive_folder_id:
-  # Memastikan format Private Key aman
+        print("❌ ERROR: Secret GCP_SA_KEY, SPREADSHEET_URL, atau DRIVE_FOLDER_ID belum terisi di GitHub Secrets!")
+        sys.exit(1)
+
+    # 1. Autentikasi Google Sheet & Drive
+    try:
+        sa_info = json.loads(sa_key_str)
         if 'private_key' in sa_info:
             sa_info['private_key'] = sa_info['private_key'].replace('\\n', '\n')
-            
+
         scopes = [
             'https://www.googleapis.com/auth/spreadsheets',
             'https://www.googleapis.com/auth/drive'
@@ -27,14 +32,9 @@ def main():
         gc = gspread.authorize(creds)
         sheet = gc.open_by_url(sheet_url).sheet1
         print("✅ Terhubung ke Google Sheet!")
-        ]
-        creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
-        gc = gspread.authorize(creds)
-        sheet = gc.open_by_url(sheet_url).sheet1
-        print("✅ Terhubung ke Google Sheet!")
     except Exception as e:
         print(f"❌ GAGAL KONEKSI SPREADSHEET: {e}")
-        print("👉 Pastikan email service account (clay-bot@...) sudah ditambahkan sebagai EDITOR di Google Sheet!")
+        print("👉 Pastikan email service account (clay-bot@...) sudah di-add sebagai EDITOR dan API Sheets/Drive sudah di-ENABLE!")
         sys.exit(1)
 
     # 2. Baca Data Sheet
