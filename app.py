@@ -24,16 +24,14 @@ def check_password():
 if not check_password():
     st.stop()
 
-# Ambil dan bersihkan key dari secrets
 raw_key = st.secrets.get("GROQ_API_KEY", "")
 groq_key = "".join(raw_key.split())
 
 st.title("✂️ Clay Auto Clipper - Executive Dashboard")
 st.markdown("Selamat datang, CEO. Pantau radar viral dan setujui klip untuk diproduksi.")
 
-# DEBUG STATUS KEY (Supaya kita tahu kuncinya terbaca atau tidak)
 if not groq_key:
-    st.error("🚨 CRITICAL: `GROQ_API_KEY` tidak terbaca di Streamlit Secrets! Cek menu Settings -> Secrets.")
+    st.error("🚨 CRITICAL: `GROQ_API_KEY` tidak terbaca di Streamlit Secrets!")
 else:
     st.sidebar.success(f"✅ Groq Key Terbaca: {groq_key[:8]}... (Aman)")
 
@@ -45,7 +43,7 @@ with tab1:
     
     if st.button("🧠 Analisis Potensi Viral"):
         if not groq_key:
-            st.error("⚠️ Tidak bisa menganalisis karena API Key Groq kosong di Secrets.")
+            st.error("⚠️ Tidak bisa menganalisis karena API Key Groq kosong.")
         elif video_url:
             with st.spinner("Groq AI sedang membedah video..."):
                 try:
@@ -57,12 +55,14 @@ with tab1:
                         "messages": [{"role": "user", "content": prompt_text}]
                     }
                     
+                    # Tambahan User-Agent agar lolos blokir Cloudflare (Error 1010)
                     req = urllib.request.Request(
                         url,
                         data=json.dumps(payload).encode('utf-8'),
                         headers={
                             'Content-Type': 'application/json',
-                            'Authorization': f'Bearer {groq_key}'
+                            'Authorization': f'Bearer {groq_key}',
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                         },
                         method='POST'
                     )
