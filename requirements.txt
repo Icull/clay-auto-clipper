@@ -1,4 +1,0 @@
-streamlit
-google-generativeai
-google-api-python-client
-yt-dlp
