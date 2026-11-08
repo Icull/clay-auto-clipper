@@ -11,12 +11,11 @@ def main():
     print("🤖 Memulai Bot Clay Auto Clipper 24/7...")
     
     sa_key_str = os.environ.get('GCP_SA_KEY')
-    gemini_key = os.environ.get('GEMINI_API_KEY')
     sheet_url = os.environ.get('SPREADSHEET_URL')
     drive_folder_id = os.environ.get('DRIVE_FOLDER_ID')
 
     if not sa_key_str or not sheet_url or not drive_folder_id:
-        print("❌ Error: Secrets environment belum lengkap di Settings GitHub.")
+        print("❌ Error: Secrets environment belum lengkap.")
         return
 
     try:
@@ -43,7 +42,9 @@ def main():
     found_any = False
 
     for row in data:
-        is_approved = str(row.get('Approve? (Centang)', '')).upper() == 'TRUE'
+        # Fleksibel membaca header 'Approve?' maupun 'Approve? (Centang)'
+        approve_val = row.get('Approve?', row.get('Approve? (Centang)', ''))
+        is_approved = str(approve_val).strip().upper() == 'TRUE'
         status = str(row.get('Status Proses', '')).strip().upper()
 
         if is_approved and status not in ['SELESAI', 'GAGAL', 'PROSES...']:
@@ -92,7 +93,7 @@ def main():
         row_index += 1
 
     if not found_any:
-        print("ℹ️ Tidak ada antrean video ter-approve. Mesin standby aman.")
+        print("ℹ️ Tidak ada antrean video ter-approve.")
 
 if __name__ == '__main__':
     main()
