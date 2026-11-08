@@ -4,30 +4,48 @@ import json
 import sys
 import re
 import subprocess
+import requests
 import gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
-
-DRIVE_FOLDER_ID_HARDCODED = "11UbjlQiPdQ3nkLrelQL57R234r37mfuX"
-USER_EMAIL = "imtitcall@gmail.com"
+from googleapiclient.http import MediaIoBaseDownload
 
 def extract_drive_id(url):
     match = re.search(r'[-\w]{25,}', url)
     return match.group(0) if match else None
 
+def send_telegram_video(bot_token, chat_id, video_path, caption):
+    url = f"https://api.telegram.org/bot{bot_token}/sendVideo"
+    print("📤 Mengirim video hasil klip ke Telegram...")
+    try:
+        with open(video_path, 'rb') as video_file:
+            files = {'video': video_file}
+            data = {'chat_id': chat_id, 'caption': caption}
+            response = requests.post(url, data=data, files=files, timeout=180)
+            
+        if response.status_code == 200:
+            print("✅ BERHASIL! Video dikirim ke Telegram!")
+            return True
+        else:
+            print(f"❌ Gagal kirim ke Telegram (Status {response.status_code}): {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Error kirim Telegram: {e}")
+        return False
+
 def main():
-    print("🤖 Memulai Clay Auto Clipper 24/7 (DECOUPLED DRIVE UPLOAD ENGINE)...")
+    print("🤖 Memulai Clay Auto Clipper 24/7 (TELEGRAM ENGINE)...")
     
     sa_key_str = os.environ.get('GCP_SA_KEY')
     sheet_url = os.environ.get('SPREADSHEET_URL')
-    drive_folder_id = os.environ.get('DRIVE_FOLDER_ID') or DRIVE_FOLDER_ID_HARDCODED
+    telegram_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+    telegram_chat_id = os.environ.get('TELEGRAM_CHAT_ID')
 
-    if not sa_key_str or not sheet_url:
-        print("❌ ERROR: Secret GCP_SA_KEY atau SPREADSHEET_URL belum terisi!")
+    if not sa_key_str or not sheet_url or not telegram_token or not telegram_chat_id:
+        print("❌ ERROR: Secret GCP_SA_KEY, SPREADSHEET_URL, TELEGRAM_BOT_TOKEN, atau TELEGRAM_CHAT_ID belum terisi!")
         sys.exit(1)
 
-    # 1. Autentikasi Google API
+    # 1. Autentikasi Google Sheet & Drive API
     try:
         sa_info = json.loads(sa_key_str)
         if 'private_key' in sa_info:
@@ -35,7 +53,7 @@ def main():
 
         scopes = [
             'https://www.googleapis.com/auth/spreadsheets',
-            'https://www.googleapis.com/auth/drive'
+            'https://www.googleapis.com/auth/drive.readonly'
         ]
         creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
         gc = gspread.authorize(creds)
@@ -113,48 +131,14 @@ def main():
             """
             subprocess.run(ffmpeg_cmd, shell=True, capture_output=True)
 
-            # 5. Eksekusi Decoupled Upload (Bypass Error 404 Google Drive API)
+            # 5. Kirim Hasil Potongan ke Telegram Chat
             if os.path.exists(output_clip) and os.path.getsize(output_clip) > 0:
-                try:
-                    # Langkah A: Upload File Mentah (100% Sukses tanpa Error 404)
-                    file_metadata = {'name': f"{judul[:15].replace(' ', '_')}_clip.mp4"}
-                    media = MediaFileUpload(output_clip, mimetype='video/mp4')
-                    uploaded_file = drive_service.files().create(
-                        body=file_metadata,
-                        media_body=media,
-                        fields='id'
-                    ).execute()
-                    new_file_id = uploaded_file.get('id')
-                    print(f"📤 File video berhasil terbuat di Drive! (File ID: {new_file_id})")
-
-                    # Langkah B: Bagikan Akses Langsung ke Akun Utama (imtitcall@gmail.com)
-                    permission = {
-                        'type': 'user',
-                        'role': 'writer',
-                        'emailAddress': USER_EMAIL
-                    }
-                    drive_service.permissions().create(
-                        fileId=new_file_id,
-                        body=permission,
-                        fields='id'
-                    ).execute()
-                    print(f"🔑 Hak akses Editor berhasil diberikan ke {USER_EMAIL}")
-
-                    # Langkah C: Pindahkan File ke Folder 'Hasil_Klip_Clay'
-                    try:
-                        drive_service.files().update(
-                            fileId=new_file_id,
-                            addParents=drive_folder_id,
-                            supportsAllDrives=True
-                        ).execute()
-                        print(f"📁 Video berhasil dipindahkan ke folder target ID: {drive_folder_id}")
-                    except Exception as move_err:
-                        print(f"⚠️ Catatan: Pemindahan ke folder terhalang izin, namun video SUDAH ter-upload & di-share ke akun Anda: {move_err}")
-
-                    print(f"🎉 BERHASIL TOTAL! File ID: {new_file_id}")
+                caption_text = f"🎬 *{judul}*\n✅ Klip 9:16 berhasil dipotong!"
+                success = send_telegram_video(telegram_token, telegram_chat_id, output_clip, caption_text)
+                
+                if success:
                     sheet.update_cell(row_index, 6, 'SELESAI')
-                except Exception as upload_err:
-                    print(f"❌ Gagal Upload Hasil: {upload_err}")
+                else:
                     sheet.update_cell(row_index, 6, 'GAGAL')
                     has_error = True
             else:
@@ -162,7 +146,7 @@ def main():
                 sheet.update_cell(row_index, 6, 'GAGAL')
                 has_error = True
 
-            # Bersihkan file sampah lokal
+            # Bersihkan file sampah
             for temp_f in [input_raw, output_clip]:
                 if os.path.exists(temp_f):
                     os.remove(temp_f)
