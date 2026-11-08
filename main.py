@@ -9,8 +9,10 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
+# HARDCODE ID FOLDER DRIVE TARGET (Hasil_Klip_Clay)
+DRIVE_FOLDER_ID_HARDCODED = "11UbjlQiPdQ3nkLrelQL57R234r37mfuX"
+
 def extract_drive_id(url):
-    # Melacak ID unik dari link Google Drive secara otomatis
     match = re.search(r'[-\w]{25,}', url)
     return match.group(0) if match else None
 
@@ -19,10 +21,10 @@ def main():
     
     sa_key_str = os.environ.get('GCP_SA_KEY')
     sheet_url = os.environ.get('SPREADSHEET_URL')
-    drive_folder_id = os.environ.get('DRIVE_FOLDER_ID') # Folder Hasil Klip
+    drive_folder_id = os.environ.get('DRIVE_FOLDER_ID') or DRIVE_FOLDER_ID_HARDCODED
 
-    if not sa_key_str or not sheet_url or not drive_folder_id:
-        print("❌ ERROR: Secret GCP_SA_KEY, SPREADSHEET_URL, atau DRIVE_FOLDER_ID belum terisi!")
+    if not sa_key_str or not sheet_url:
+        print("❌ ERROR: Secret GCP_SA_KEY atau SPREADSHEET_URL belum terisi!")
         sys.exit(1)
 
     try:
@@ -71,7 +73,6 @@ def main():
             print(f"\n🎬 Memproses Baris {row_index}: {judul}")
             sheet.update_cell(row_index, 6, 'PROSES...')
 
-            # 1. Verifikasi Link Google Drive Mentahan
             file_id = extract_drive_id(link_video)
             if not file_id:
                 print("❌ Kolom Link Video BUKAN Link Google Drive!")
@@ -83,7 +84,6 @@ def main():
             input_raw = f"raw_{row_index}.mp4"
             output_clip = f"clip_{row_index}.mp4"
 
-            # 2. Download File Mentahan dari Google Drive (Kecepatan Tinggi)
             print(f"⏳ Mengunduh mentahan dari Drive (ID: {file_id})...")
             try:
                 request = drive_service.files().get_media(fileId=file_id)
@@ -94,13 +94,12 @@ def main():
                     status_dl, done = downloader.next_chunk()
                     print(f"   Download progress: {int(status_dl.progress() * 100)}%.")
             except Exception as e:
-                print(f"❌ Gagal unduh mentahan (Pastikan folder mentahan di-Share ke bot!): {e}")
+                print(f"❌ Gagal unduh mentahan: {e}")
                 sheet.update_cell(row_index, 6, 'GAGAL')
                 has_error = True
                 row_index += 1
                 continue
 
-            # 3. Proses Rendering FFmpeg (Potong 9:16)
             print("✂️ Mulai memotong video ke format 9:16...")
             ffmpeg_cmd = f"""
             ffmpeg -y -i "{input_raw}" -ss 00:00:10 -t 00:00:30 \
@@ -110,7 +109,6 @@ def main():
             """
             subprocess.run(ffmpeg_cmd, shell=True, capture_output=True)
 
-            # 4. Upload Hasil Potongan ke Folder Drive Tujuan
             if os.path.exists(output_clip) and os.path.getsize(output_clip) > 0:
                 try:
                     file_metadata = {
@@ -133,7 +131,6 @@ def main():
                 sheet.update_cell(row_index, 6, 'GAGAL')
                 has_error = True
 
-            # Bersihkan mesin virtual GitHub
             for temp_f in [input_raw, output_clip]:
                 if os.path.exists(temp_f):
                     os.remove(temp_f)
